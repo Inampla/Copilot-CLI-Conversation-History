@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgInstalledDir>$(MSBuildThisFileDirectory)FTXUI\vcpkg_installed\$(VcpkgTriplet)\</VcpkgInstalledDir>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)FTXUI\vcpkg\scripts\buildsystems\msbuild\vcpkg.props" />
+</Project>

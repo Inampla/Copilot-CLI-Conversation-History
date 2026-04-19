@@ -1,0 +1,53 @@
+# Visual Studio user-specific files
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+ipch/
+
+# Build output folders
+x64/
+x86/
+Debug/
+Release/
+[Cc]opilot .b61762a9/
+
+# C/C++ intermediate and debug files
+*.obj
+*.o
+*.ilk
+*.idb
+*.pdb
+*.tlog
+*.lastbuildstate
+*.recipe
+*.log
+*.tmp
+*.enc
+
+# Executables and libraries
+*.exe
+*.dll
+*.lib
+*.exp
+
+# CMake / Ninja generated files
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+CPackConfig.cmake
+CPackSourceConfig.cmake
+
+# Local dependency / package manager output
+FTXUI/
+vcpkg_installed/
+
+# Local analysis / temporary files
+Tree.txt
+tree.txt

@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)FTXUI\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets" />
+</Project>
