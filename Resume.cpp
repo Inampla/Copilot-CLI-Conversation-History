@@ -146,6 +146,7 @@ static Workspace ReadOneWorkspaceYaml(const string& sessionName)
         return workspace;
     }
 
+    string workspaceName;
     string line;
     while (getline(fin, line))
     {
@@ -179,6 +180,10 @@ static Workspace ReadOneWorkspaceYaml(const string& sessionName)
         {
             workspace.cwd = value;
         }
+        else if (key == "name")
+        {
+            workspaceName = value;
+        }
         else if (key == "summary")
         {
             workspace.summary = value;
@@ -195,6 +200,16 @@ static Workspace ReadOneWorkspaceYaml(const string& sessionName)
         {
             workspace.updated_at = value;
         }
+    }
+
+    if (!workspaceName.empty())
+    {
+        workspace.summary = workspaceName;
+    }
+
+    if (workspace.summary.empty())
+    {
+        workspace.summary = workspace.id;
     }
 
     return workspace;
