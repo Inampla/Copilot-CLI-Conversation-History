@@ -11,22 +11,9 @@
 #include <fstream>
 #include <cctype>
 
+#include "SessionModel.h"
+
 using namespace std;
-
-struct Workspace {
-    string session_folder_name;
-    string id;
-    string cwd;
-    string summary;
-    string summary_count;
-    string created_at;
-    string updated_at;
-};
-
-struct DeleteResult {
-    bool ok;
-    string message;
-};
 
 enum PageMode {
     PageList = 0,
@@ -54,12 +41,12 @@ struct TuiAction {
 
 TuiAction ShowTuiAndWait(
     const vector<Workspace>& allWorkspace,
-    size_t selectedIndex,
-    size_t topVisibleIndex,
-    const string& statusText,
-    PageMode currentPage,
-    bool showDeleteDialog,
-    bool deleteYesSelected
+    size_t& selectedIndex,
+    size_t& topVisibleIndex,
+    string& statusText,
+    PageMode& currentPage,
+    bool& showDeleteDialog,
+    bool& deleteYesSelected
 );
 
 vector<Workspace> LoadAllWorkspace();
@@ -90,7 +77,6 @@ int main()
 
     size_t selectedIndex = 0;
     size_t topVisibleIndex = 0;
-    const size_t visibleRowCount = 12;
 
     PageMode currentPage = PageList;
     string statusText = "Loaded " + to_string(allWorkspace.size()) + " sessions.";
@@ -112,67 +98,8 @@ int main()
             break;
         }
 
-        if (action.type == TuiMoveUp)
+        if (action.type == TuiConfirmDelete)
         {
-            if (!allWorkspace.empty() && selectedIndex > 0)
-            {
-                selectedIndex--;
-                if (selectedIndex < topVisibleIndex)
-                {
-                    topVisibleIndex = selectedIndex;
-                }
-            }
-        }
-        else if (action.type == TuiMoveDown)
-        {
-            if (!allWorkspace.empty() && selectedIndex + 1 < allWorkspace.size())
-            {
-                selectedIndex++;
-                if (selectedIndex >= topVisibleIndex + visibleRowCount)
-                {
-                    topVisibleIndex = selectedIndex - visibleRowCount + 1;
-                }
-            }
-        }
-        else if (action.type == TuiOpenDetail)
-        {
-            currentPage = PageDetail;
-        }
-        else if (action.type == TuiBack)
-        {
-            currentPage = PageList;
-        }
-        else if (action.type == TuiOpenDeleteDialog)
-        {
-            showDeleteDialog = true;
-            deleteYesSelected = false;
-            statusText = "Delete dialog opened.";
-        }
-        else if (action.type == TuiDeleteSelectLeft)
-        {
-            if (showDeleteDialog)
-            {
-                deleteYesSelected = true;
-            }
-        }
-        else if (action.type == TuiDeleteSelectRight)
-        {
-            if (showDeleteDialog)
-            {
-                deleteYesSelected = false;
-            }
-        }
-        else if (action.type == TuiCloseDeleteDialog)
-        {
-            showDeleteDialog = false;
-            deleteYesSelected = false;
-            statusText = "Delete cancelled.";
-        }
-        else if (action.type == TuiConfirmDelete)
-        {
-            showDeleteDialog = false;
-            deleteYesSelected = false;
-
             if (allWorkspace.empty() || selectedIndex >= allWorkspace.size())
             {
                 statusText = "Delete failed: invalid selection.";
@@ -204,16 +131,9 @@ int main()
                             topVisibleIndex = selectedIndex;
                         }
 
-                        if (topVisibleIndex + visibleRowCount > allWorkspace.size())
+                        if (topVisibleIndex >= allWorkspace.size())
                         {
-                            if (allWorkspace.size() > visibleRowCount)
-                            {
-                                topVisibleIndex = allWorkspace.size() - visibleRowCount;
-                            }
-                            else
-                            {
-                                topVisibleIndex = 0;
-                            }
+                            topVisibleIndex = selectedIndex;
                         }
                     }
 

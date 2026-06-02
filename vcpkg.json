@@ -1,5 +1,11 @@
 {
   "dependencies": [
-    "ftxui"
+    "ftxui",
+    {
+      "name": "sqlite3",
+      "features": [
+        "fts5"
+      ]
+    }
   ]
 }

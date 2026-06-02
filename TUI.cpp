@@ -5,19 +5,12 @@
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/terminal.hpp>
+
+#include "SessionModel.h"
 
 using namespace std;
 using namespace ftxui;
-
-struct Workspace {
-    string session_folder_name;
-    string id;
-    string cwd;
-    string summary;
-    string summary_count;
-    string created_at;
-    string updated_at;
-};
 
 enum PageMode {
     PageList = 0,
@@ -58,11 +51,42 @@ static string GetDisplayName(const Workspace& workspace)
     {
         return workspace.summary;
     }
-    if (!workspace.id.empty())
+
+    if (!workspace.repository.empty())
     {
-        return workspace.id;
+        return workspace.repository;
     }
-    return "N/A";
+
+    if (!workspace.cwd.empty())
+    {
+        size_t slashPos = workspace.cwd.find_last_of("\\/");
+        if (slashPos != string::npos && slashPos + 1 < workspace.cwd.size())
+        {
+            return workspace.cwd.substr(slashPos + 1);
+        }
+
+        return workspace.cwd;
+    }
+
+    return "Untitled conversation";
+}
+
+static string GetClientName(const Workspace& workspace)
+{
+    if (!workspace.client_name.empty())
+    {
+        return workspace.client_name;
+    }
+    return "local";
+}
+
+static string GetStorageDescription(const Workspace& workspace)
+{
+    if (workspace.has_events_jsonl)
+    {
+        return "workspace.yaml + events.jsonl";
+    }
+    return "workspace.yaml + session-store.db";
 }
 
 static string CutText(const string& textValue, size_t maxWidth)
@@ -78,6 +102,16 @@ static string CutText(const string& textValue, size_t maxWidth)
     return textValue.substr(0, maxWidth - 3) + "...";
 }
 
+static string FormatTimestamp(const string& timestamp)
+{
+    if (timestamp.size() >= 16 && timestamp[10] == 'T')
+    {
+        return timestamp.substr(0, 10) + " " + timestamp.substr(11, 5);
+    }
+
+    return timestamp;
+}
+
 static string PadRight(const string& textValue, size_t width)
 {
     string result = textValue;
@@ -90,6 +124,59 @@ static string PadRight(const string& textValue, size_t width)
         result += string(width - result.size(), ' ');
     }
     return result;
+}
+
+size_t CalculateVisibleRowCount()
+{
+    Dimensions dimensions = Terminal::Size();
+    int rowCount = dimensions.dimy - 12;
+
+    if (rowCount < 6)
+    {
+        return 6;
+    }
+
+    return static_cast<size_t>(rowCount);
+}
+
+static size_t ClampTopVisibleIndex(
+    size_t totalCount,
+    size_t selectedIndex,
+    size_t topVisibleIndex,
+    size_t visibleRowCount
+)
+{
+    if (totalCount == 0)
+    {
+        return 0;
+    }
+
+    if (visibleRowCount == 0)
+    {
+        visibleRowCount = 1;
+    }
+
+    if (selectedIndex < topVisibleIndex)
+    {
+        topVisibleIndex = selectedIndex;
+    }
+    else if (selectedIndex >= topVisibleIndex + visibleRowCount)
+    {
+        topVisibleIndex = selectedIndex - visibleRowCount + 1;
+    }
+
+    size_t maxTopVisibleIndex = 0;
+    if (totalCount > visibleRowCount)
+    {
+        maxTopVisibleIndex = totalCount - visibleRowCount;
+    }
+
+    if (topVisibleIndex > maxTopVisibleIndex)
+    {
+        topVisibleIndex = maxTopVisibleIndex;
+    }
+
+    return topVisibleIndex;
 }
 
 static Element RenderHelpBar(PageMode currentPage, bool showDeleteDialog)
@@ -128,10 +215,10 @@ static Element RenderListTable(
     string header =
         "  "
         + PadRight("No", 4)
-        + PadRight("Type", 8)
-        + PadRight("Modified", 22)
-        + PadRight("Created", 22)
-        + "Summary";
+        + PadRight("Client", 14)
+        + PadRight("Modified", 18)
+        + PadRight("Created", 18)
+        + "Title";
 
     lines.push_back(text(header) | bold);
 
@@ -152,9 +239,9 @@ static Element RenderListTable(
         string row =
             string(i == selectedIndex ? "> " : "  ")
             + PadRight(to_string(i), 4)
-            + PadRight("Local", 8)
-            + PadRight(GetFieldOrNA(allWorkspace[i].updated_at), 22)
-            + PadRight(GetFieldOrNA(allWorkspace[i].created_at), 22)
+            + PadRight(GetClientName(allWorkspace[i]), 14)
+            + PadRight(GetFieldOrNA(FormatTimestamp(allWorkspace[i].updated_at)), 18)
+            + PadRight(GetFieldOrNA(FormatTimestamp(allWorkspace[i].created_at)), 18)
             + CutText(GetDisplayName(allWorkspace[i]), 64);
 
         if (i == selectedIndex)
@@ -174,11 +261,10 @@ static Element RenderListPage(
     const vector<Workspace>& allWorkspace,
     size_t selectedIndex,
     size_t topVisibleIndex,
+    size_t visibleRowCount,
     bool muted
 )
 {
-    const size_t visibleRowCount = 12;
-
     Element listPanel = window(
         text("Session List"),
         RenderListTable(allWorkspace, selectedIndex, topVisibleIndex, visibleRowCount, muted)
@@ -199,9 +285,14 @@ static Element RenderDetailPage(const Workspace* currentWorkspace)
 
     lines.push_back(text("summary: " + GetFieldOrNA(currentWorkspace->summary)));
     lines.push_back(text("id: " + GetFieldOrNA(currentWorkspace->id)));
+    lines.push_back(text("session_folder: " + GetFieldOrNA(currentWorkspace->session_folder_name)));
+    lines.push_back(text("client_name: " + GetFieldOrNA(currentWorkspace->client_name)));
+    lines.push_back(text("repository: " + GetFieldOrNA(currentWorkspace->repository)));
+    lines.push_back(text("branch: " + GetFieldOrNA(currentWorkspace->branch)));
     lines.push_back(text("summary_count: " + GetFieldOrNA(currentWorkspace->summary_count)));
     lines.push_back(text("created_at: " + GetFieldOrNA(currentWorkspace->created_at)));
     lines.push_back(text("updated_at: " + GetFieldOrNA(currentWorkspace->updated_at)));
+    lines.push_back(text("storage: " + GetStorageDescription(*currentWorkspace)));
     lines.push_back(text("cwd: " + GetFieldOrNA(currentWorkspace->cwd)));
 
     return window(text("Session Detail"), vbox(lines));
@@ -256,12 +347,12 @@ static Element RenderDeleteDialog(bool deleteYesSelected)
 
 TuiAction ShowTuiAndWait(
     const vector<Workspace>& allWorkspace,
-    size_t selectedIndex,
-    size_t topVisibleIndex,
-    const string& statusText,
-    PageMode currentPage,
-    bool showDeleteDialog,
-    bool deleteYesSelected
+    size_t& selectedIndex,
+    size_t& topVisibleIndex,
+    string& statusText,
+    PageMode& currentPage,
+    bool& showDeleteDialog,
+    bool& deleteYesSelected
 )
 {
     TuiAction action;
@@ -279,10 +370,17 @@ TuiAction ShowTuiAndWait(
 
             bool muted = showDeleteDialog;
             Element body;
+            size_t visibleRowCount = CalculateVisibleRowCount();
+            size_t displayTopVisibleIndex = ClampTopVisibleIndex(
+                allWorkspace.size(),
+                selectedIndex,
+                topVisibleIndex,
+                visibleRowCount
+            );
 
             if (currentPage == PageList)
             {
-                body = RenderListPage(allWorkspace, selectedIndex, topVisibleIndex, muted);
+                body = RenderListPage(allWorkspace, selectedIndex, displayTopVisibleIndex, visibleRowCount, muted);
             }
             else
             {
@@ -333,22 +431,21 @@ TuiAction ShowTuiAndWait(
             {
                 if (event == Event::ArrowLeft)
                 {
-                    action.type = TuiDeleteSelectLeft;
-                    screen.ExitLoopClosure()();
+                    deleteYesSelected = true;
                     return true;
                 }
 
                 if (event == Event::ArrowRight)
                 {
-                    action.type = TuiDeleteSelectRight;
-                    screen.ExitLoopClosure()();
+                    deleteYesSelected = false;
                     return true;
                 }
 
                 if (event == Event::Escape)
                 {
-                    action.type = TuiCloseDeleteDialog;
-                    screen.ExitLoopClosure()();
+                    showDeleteDialog = false;
+                    deleteYesSelected = false;
+                    statusText = "Delete cancelled.";
                     return true;
                 }
 
@@ -357,13 +454,17 @@ TuiAction ShowTuiAndWait(
                     if (deleteYesSelected)
                     {
                         action.type = TuiConfirmDelete;
+                        showDeleteDialog = false;
+                        deleteYesSelected = false;
+                        screen.ExitLoopClosure()();
                     }
                     else
                     {
-                        action.type = TuiCloseDeleteDialog;
+                        showDeleteDialog = false;
+                        deleteYesSelected = false;
+                        statusText = "Delete cancelled.";
                     }
 
-                    screen.ExitLoopClosure()();
                     return true;
                 }
 
@@ -374,29 +475,45 @@ TuiAction ShowTuiAndWait(
             {
                 if (event == Event::ArrowUp)
                 {
-                    action.type = TuiMoveUp;
-                    screen.ExitLoopClosure()();
+                    if (!allWorkspace.empty() && selectedIndex > 0)
+                    {
+                        selectedIndex--;
+                        topVisibleIndex = ClampTopVisibleIndex(
+                            allWorkspace.size(),
+                            selectedIndex,
+                            topVisibleIndex,
+                            CalculateVisibleRowCount()
+                        );
+                    }
                     return true;
                 }
 
                 if (event == Event::ArrowDown)
                 {
-                    action.type = TuiMoveDown;
-                    screen.ExitLoopClosure()();
+                    if (!allWorkspace.empty() && selectedIndex + 1 < allWorkspace.size())
+                    {
+                        selectedIndex++;
+                        topVisibleIndex = ClampTopVisibleIndex(
+                            allWorkspace.size(),
+                            selectedIndex,
+                            topVisibleIndex,
+                            CalculateVisibleRowCount()
+                        );
+                    }
                     return true;
                 }
 
                 if (event == Event::Return && !allWorkspace.empty())
                 {
-                    action.type = TuiOpenDetail;
-                    screen.ExitLoopClosure()();
+                    currentPage = PageDetail;
                     return true;
                 }
 
                 if (event == Event::Delete && !allWorkspace.empty())
                 {
-                    action.type = TuiOpenDeleteDialog;
-                    screen.ExitLoopClosure()();
+                    showDeleteDialog = true;
+                    deleteYesSelected = false;
+                    statusText = "Delete dialog opened.";
                     return true;
                 }
             }
@@ -404,15 +521,15 @@ TuiAction ShowTuiAndWait(
             {
                 if (event == Event::Escape)
                 {
-                    action.type = TuiBack;
-                    screen.ExitLoopClosure()();
+                    currentPage = PageList;
                     return true;
                 }
 
                 if (event == Event::Delete && !allWorkspace.empty())
                 {
-                    action.type = TuiOpenDeleteDialog;
-                    screen.ExitLoopClosure()();
+                    showDeleteDialog = true;
+                    deleteYesSelected = false;
+                    statusText = "Delete dialog opened.";
                     return true;
                 }
             }
